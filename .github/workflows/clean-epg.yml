@@ -1,0 +1,62 @@
+name: Auto-Clean EPG
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Runs daily at midnight UTC
+  workflow_dispatch:  # Allows manual run
+
+jobs:
+  clean-epg:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: pip install requests beautifulsoup4 lxml
+
+    - name: Download and clean EPG
+      env:
+        USERNAME: 4xB5pzRkVH
+        PASSWORD: XMVEydMqNj
+      run: |
+        python - <<EOF
+        import requests
+        import re
+        from bs4 import BeautifulSoup
+
+        url = f"http://link4tv.me:80/xmltv.php?username={os.getenv('USERNAME')}&password={os.getenv('PASSWORD')}"
+
+        response = requests.get(url)
+        if response.status_code != 200:
+            print("Error downloading EPG")
+            exit(1)
+
+        xml = response.text
+
+        # Remove oversized base64 images (the crash cause)
+        xml = re.sub(r'<icon src="data:image/png;base64,[^"]{10000,}"[^>]*>', '<icon src="" />', xml)
+
+        # Save cleaned file
+        with open('epg_clean.xml', 'w', encoding='utf-8') as f:
+            f.write(xml)
+        EOF
+
+    - name: Upload to GitHub
+      uses: actions/upload-artifact@v4
+      with:
+        name: epg_clean
+        path: epg_clean.xml
+
+    - name: Deploy to GitHub Pages (optional permanent URL)
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: .
+        destination_dir: epg
