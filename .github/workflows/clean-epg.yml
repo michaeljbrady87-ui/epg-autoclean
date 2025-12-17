@@ -2,8 +2,8 @@ name: Auto-Clean EPG
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Runs daily at midnight UTC
-  workflow_dispatch:  # Allows manual run
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+  workflow_dispatch:
 
 jobs:
   clean-epg:
@@ -41,21 +41,21 @@ jobs:
 
         xml = response.text
 
-        # Remove oversized base64 images (the crash cause)
+        # Remove oversized base64 images
         xml = re.sub(r'<icon src="data:image/png;base64,[^"]{10000,}"[^>]*>', '<icon src="" />', xml)
 
-        # Save cleaned file
+        # Save
         with open('epg_clean.xml', 'w', encoding='utf-8') as f:
             f.write(xml)
         EOF
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: epg_clean
-        path: epg_clean.xml
+    - name: Rename to .gz for OTT
+      run: mv epg_clean.xml epg_clean.gz
 
-    - name: Deploy to GitHub Pages (permanent URL)
+    - name: Move to /epg folder
+      run: mkdir -p epg && mv epg_clean.gz epg/
+
+    - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v4
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
