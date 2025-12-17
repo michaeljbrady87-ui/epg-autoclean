@@ -2,7 +2,7 @@ name: Auto-Clean EPG
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Daily at midnight UTC
+    - cron: '0 3 * * *'   # Daily 3am UTC (safer than midnight)
   workflow_dispatch:
 
 jobs:
@@ -18,46 +18,46 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install dependencies
-      run: pip install requests beautifulsoup4 lxml
-
     - name: Download and clean EPG
       env:
         USERNAME: 4xB5pzRkVH
         PASSWORD: XMVEydMqNj
       run: |
-        python - <<EOF
+        python << 'EOF'
         import requests
-        import re
+        import xml.etree.ElementTree as ET
+        import io
+        import gzip
         import os
-        from bs4 import BeautifulSoup
 
-        url = f"http://link4tv.me:80/xmltv.php?username={os.getenv('USERNAME')}&password={os.getenv('PASSWORD')}"
+        url = f"http://link4tv.me:80/xmltv.php?username={os.environ['USERNAME']}&password={os.environ['PASSWORD']}"
 
-        response = requests.get(url)
-        if response.status_code != 200:
-            print("Error downloading EPG")
-            exit(1)
+        r = requests.get(url, timeout=60)
+        r.raise_for_status()
 
-        xml = response.text
+        tree = ET.parse(io.StringIO(r.text))
+        root = tree.getroot()
 
-        # Remove oversized base64 images
-        xml = re.sub(r'<icon src="data:image/png;base64,[^"]{10000,}"[^>]*>', '<icon src="" />', xml)
+        # REMOVE ALL ICON TAGS (safest)
+        for parent in root.iter():
+            for child in list(parent):
+                if child.tag == "icon":
+                    parent.remove(child)
 
-        # Save
-        with open('epg_clean.xml', 'w', encoding='utf-8') as f:
-            f.write(xml)
+        # Write clean XML
+        xml_bytes = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+        os.makedirs("epg", exist_ok=True)
+
+        # Proper gzip
+        with gzip.open("epg/epg.xml.gz", "wb") as f:
+            f.write(xml_bytes)
+
+        print("EPG cleaned and gzipped successfully")
         EOF
-
-    - name: Rename to .gz for OTT
-      run: mv epg_clean.xml epg_clean.gz
-
-    - name: Move to /epg folder
-      run: mkdir -p epg && mv epg_clean.gz epg/
 
     - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v4
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: .
-        destination_dir: epg
+        publish_dir: epg
