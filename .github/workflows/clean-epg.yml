@@ -2,7 +2,7 @@ name: Auto-Clean EPG
 
 on:
   schedule:
-    - cron: '0 3 * * *'   # Daily 3am UTC (safer than midnight)
+    - cron: '0 3 * * *'   # Daily at 3:00 AM UTC
   workflow_dispatch:
 
 jobs:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
+    - name: Checkout repository
       uses: actions/checkout@v4
 
     - name: Set up Python
@@ -18,7 +18,10 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Download and clean EPG
+    - name: Install Python dependencies
+      run: pip install requests
+
+    - name: Download, clean, and gzip EPG
       env:
         USERNAME: 4xB5pzRkVH
         PASSWORD: XMVEydMqNj
@@ -30,26 +33,40 @@ jobs:
         import gzip
         import os
 
-        url = f"http://link4tv.me:80/xmltv.php?username={os.environ['USERNAME']}&password={os.environ['PASSWORD']}"
+        url = (
+            "http://link4tv.me:80/xmltv.php"
+            f"?username={os.environ['USERNAME']}"
+            f"&password={os.environ['PASSWORD']}"
+        )
 
+        print("Downloading EPG...")
         r = requests.get(url, timeout=60)
         r.raise_for_status()
 
+        # Parse XML safely
         tree = ET.parse(io.StringIO(r.text))
         root = tree.getroot()
 
-        # REMOVE ALL ICON TAGS (safest)
+        # REMOVE ALL ICON TAGS (prevents OTT crash)
+        removed = 0
         for parent in root.iter():
             for child in list(parent):
                 if child.tag == "icon":
                     parent.remove(child)
+                    removed += 1
 
-        # Write clean XML
-        xml_bytes = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+        print(f"Removed {removed} <icon> tags")
+
+        # Serialize clean XML
+        xml_bytes = ET.tostring(
+            root,
+            encoding="utf-8",
+            xml_declaration=True
+        )
 
         os.makedirs("epg", exist_ok=True)
 
-        # Proper gzip
+        # Write REAL gzip (not renamed)
         with gzip.open("epg/epg.xml.gz", "wb") as f:
             f.write(xml_bytes)
 
