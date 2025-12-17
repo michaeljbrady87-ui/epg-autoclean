@@ -29,6 +29,7 @@ jobs:
         python - <<EOF
         import requests
         import re
+        import os
         from bs4 import BeautifulSoup
 
         url = f"http://link4tv.me:80/xmltv.php?username={os.getenv('USERNAME')}&password={os.getenv('PASSWORD')}"
@@ -48,13 +49,13 @@ jobs:
             f.write(xml)
         EOF
 
-    - name: Upload to GitHub
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: epg_clean
         path: epg_clean.xml
 
-    - name: Deploy to GitHub Pages (optional permanent URL)
+    - name: Deploy to GitHub Pages (permanent URL)
       uses: peaceiris/actions-gh-pages@v4
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
