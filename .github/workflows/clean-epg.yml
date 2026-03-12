@@ -32,6 +32,7 @@ jobs:
         import io
         import gzip
         import os
+        import time
 
         url = (
             "http://link4tv.me:80/xmltv.php"
@@ -39,38 +40,62 @@ jobs:
             f"&password={os.environ['PASSWORD']}"
         )
 
-        print("Downloading EPG...")
-        r = requests.get(url, timeout=60)
-        r.raise_for_status()
-
-        # Parse XML safely
-        tree = ET.parse(io.StringIO(r.text))
-        root = tree.getroot()
-
-        # REMOVE ALL ICON TAGS (prevents OTT crash)
-        removed = 0
-        for parent in root.iter():
-            for child in list(parent):
-                if child.tag == "icon":
-                    parent.remove(child)
-                    removed += 1
-
-        print(f"Removed {removed} <icon> tags")
-
-        # Serialize clean XML
-        xml_bytes = ET.tostring(
-            root,
-            encoding="utf-8",
-            xml_declaration=True
-        )
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Android TV; Linux; Shield) OTT-Navigator"
+        }
 
         os.makedirs("epg", exist_ok=True)
+        output_path = "epg/epg.xml.gz"
 
-        # Write REAL gzip (not renamed)
-        with gzip.open("epg/epg.xml.gz", "wb") as f:
-            f.write(xml_bytes)
+        last_exception = None
 
-        print("EPG cleaned and gzipped successfully")
+        for attempt in range(1, 6):
+            try:
+                print(f"Attempt {attempt}: downloading EPG...")
+                r = requests.get(
+                    url,
+                    headers=headers,
+                    timeout=90,
+                    stream=True
+                )
+                r.raise_for_status()
+
+                xml_text = r.text
+
+                tree = ET.parse(io.StringIO(xml_text))
+                root = tree.getroot()
+
+                removed = 0
+                for parent in root.iter():
+                    for child in list(parent):
+                        if child.tag == "icon":
+                            parent.remove(child)
+                            removed += 1
+
+                print(f"Removed {removed} <icon> tags")
+
+                xml_bytes = ET.tostring(
+                    root,
+                    encoding="utf-8",
+                    xml_declaration=True
+                )
+
+                with gzip.open(output_path, "wb") as f:
+                    f.write(xml_bytes)
+
+                print("EPG cleaned and gzipped successfully")
+                break
+
+            except Exception as e:
+                last_exception = e
+                print(f"Attempt {attempt} failed: {e}")
+                time.sleep(15 * attempt)
+
+        else:
+            if os.path.exists(output_path):
+                print("Download failed — reusing last known good EPG")
+            else:
+                raise last_exception
         EOF
 
     - name: Deploy to GitHub Pages
